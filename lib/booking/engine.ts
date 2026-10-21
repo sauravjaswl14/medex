@@ -9,13 +9,14 @@ export function zoneFor(provider:Pick<Provider,'timezone'|'country'>):string{
  if(/^(Nepal Standard Time)$/i.test(raw))return 'Asia/Kathmandu';
  if(/^Asia\/Katmandu$/i.test(raw))return 'Asia/Kathmandu';
  const offset=raw.match(/^(?:\(?\s*(?:GMT|UTC)\s*)?([+-])(\d{1,2}):?(\d{2})\s*\)?$/i);
- if(offset){const minutes=Number(offset[2])*60+Number(offset[3]);if(minutes<24*60&&Number(offset[3])<60){const sign=offset[1]==='+'?'-':'+';const hours=String(Number(offset[2])).padStart(2,'0');return `Etc/GMT${sign}${hours}`=== 'unused'?'': offsetToZone(offset[1],Number(offset[2]),Number(offset[3]),provider.country)}}
+ if(offset){const minutes=Number(offset[2])*60+Number(offset[3]);if(minutes<24*60&&Number(offset[3])<60){return offsetToZone(offset[1],Number(offset[2]),Number(offset[3]),provider.country)}}
  if(raw){try{new Intl.DateTimeFormat('en',{timeZone:raw});return raw}catch{}}
  return countryZones[provider.country]??'UTC';
 }
 // Intl does not accept fractional Etc/GMT offsets; Nepal's known offset is mapped to an IANA zone.
 function offsetToZone(sign:string,hours:number,minutes:number,country:string){const total=(sign==='+'?1:-1)*(hours*60+minutes);const known:Record<number,string>={345:'Asia/Kathmandu',330:'Asia/Kolkata',420:'Asia/Bangkok'};return known[total]??(minutes===0?`Etc/GMT${sign==='+'?'-':'+'}${hours}`:countryZones[country]??'UTC')}
-export function dateAt(instant:Date,zone:string){return new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(instant).reduce((a,p)=>{if(p.type==='year')a.y=p.value;if(p.type==='month')a.m=p.value;if(p.type==='day')a.d=p.value;return a},{y:'',m:'',d:''} as {y:string;m:string;d:string}).y+'-'+new Intl.DateTimeFormat('en-CA',{timeZone:zone,month:'2-digit',day:'2-digit'}).formatToParts(instant).filter(p=>p.type==='month'||p.type==='day').map(p=>p.value).join('-')}
+export function dateAt(instant:Date,zone:string){const parts=new Intl.DateTimeFormat('en-US',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(instant);const value=(type:string)=>parts.find(p=>p.type===type)?.value??'';return `${value('year')}-${value('month')}-${value('day')}`}
+
 export function addDays(date:string,days:number){const d=new Date(`${date}T12:00:00Z`);d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)}
 export function minutes(time:string){const [h,m]=time.split(':').map(Number);return h*60+m}
 export function wallInstant(date:string,time:string,zone:string){const guess=Date.parse(`${date}T${time}:00Z`);let utc=guess;for(let i=0;i<4;i++){const parts=new Intl.DateTimeFormat('en-GB',{timeZone:zone,hour:'2-digit',minute:'2-digit',year:'numeric',month:'2-digit',day:'2-digit',hourCycle:'h23'}).formatToParts(new Date(utc));const get=(k:string)=>Number(parts.find(p=>p.type===k)?.value);const actual=Date.UTC(get('year'),get('month')-1,get('day'),get('hour'),get('minute'));utc+=guess-actual}return new Date(utc)}

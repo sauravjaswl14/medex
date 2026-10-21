@@ -88,3 +88,25 @@ stateDiagram-v2
 This is a demo mock, not a payment system. The in-memory server state disappears when the Next.js server restarts. A checkout request that succeeds but loses its response **before the client receives its order ID** cannot be reconciled by `GET /orders/:id`; production requires `GET /checkout/by-key/:key` or a persisted checkout-session lookup. The demo card method does not collect or tokenize a card. Order statuses transition automatically after a short delay. The mock does not provide real multi-tab locking, inventory reservation, or provider-specific payment constraints. For production, introduce a database transaction for cart changes, durable idempotency keys, payment webhooks, authentication, reconciliation by key, and an explicit failed-payment retry flow. Measure accessibility and rapid-click behavior in a real browser before submission.
 
 **AI disclosure:** ChatGPT assisted with code generation, architectural scaffolding, tests, and this README. All changes should be reviewed and explained by the submitting engineer.
+
+## Task 3 — Timezone-aware appointment booking
+
+Visit **`/booking`**. Task 1 (`/`) and Task 2 (`/cart`) remain available. The new mock endpoints live under `/api/booking` to avoid collisions with Task 1's provider API. They implement provider details, availability by date/specialist, 90-day calendar availability, booking creation, booking lookup and rescheduling. The mock store materializes relative day offsets **once at process initialization**, relative to each provider's current date, and retains changes until the server process restarts.
+
+### Timezone decisions
+
+- `Asia/Bangkok` stays unchanged; ` UTC+05:45`, `Nepal Standard Time`, `(GMT+5:45)` and `Asia/Katmandu ` normalize to `Asia/Kathmandu`; the empty Indian timezone falls back to `Asia/Kolkata`. Other supported whole-hour offsets map to `Etc/GMT` (reversed POSIX sign). Unknown fractional offsets fall back to the country. `Intl.DateTimeFormat` performs all conversions; no client-local `new Date('YYYY-MM-DD')` assumptions.
+- All slots and calendar dates use the **provider's timezone**, not the browser timezone. The booking summary explicitly shows provider time and a separately labeled device-local time. Day boundaries use the provider's date. In a production app, customer timezone should be an explicit preference rather than inferred solely from their browser.
+- A specialist's consultation grid is generated at `duration + buffer` intervals, with each appointment's *duration* fully inside both specialist consultation and provider opening hours. The buffer is between starts; the final buffer need not fit before closing. A group of N requires N consecutive *generated* slots, not N adjacent minutes.
+- Closed weekdays, explicit closures, past slots, and the 90-day cutoff are enforced on the API, not only in the UI. A calendar day with no N-person group is disabled. Unavailable dates provide reasons in accessible labels.
+
+### Booking UX and mock failure controls
+
+- Select a provider, specialist, group size (1–4), date, and start time. Calendar and slot skeletons appear during loading. The slot grid groups morning, afternoon and evening and labels provider and customer times.
+- Switch to **Reschedule existing booking** to see the original booking alongside the proposed replacement. The mock retains the old booking if the update fails.
+- The developer panel supports latency and forced `409`/`500` on booking mutations. It does not inject into GETs so existing selections remain visible during a conflict demonstration. To simulate GET failures use `?fail=500` directly on an API URL. Offline status disables confirmation. A conflict retains the form values and offers alternatives.
+- This is an **in-memory interview mock**, not a real scheduling backend. A booking request interrupted by tab closure can have an unknown result; a production API would require idempotency keys, persistent storage, authenticated booking lookup, and transactional uniqueness across appointment slots. The current mock is single-process and should not be deployed with multiple workers. Client-side calendar keyboard support uses arrow keys to move focus among rendered days; navigation between months still uses the previous/next buttons.
+
+### Testing and verification
+
+`tests/booking.test.ts` covers all six timezone values, wall-clock conversion, day boundaries, specialist opening-hour overlap, buffer-aware consecutive slots, closures and the 90-day boundary. Run `npm run typecheck`, `npm test` and `npm run build` after installing dependencies. The development environment may not be able to install packages; do not interpret unrun tests as passing. AI assistance was used for implementation and README drafting; review the code and be prepared to explain it in the interview.
