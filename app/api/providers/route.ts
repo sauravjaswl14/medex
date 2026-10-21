@@ -1,0 +1,2 @@
+import {NextRequest,NextResponse} from 'next/server';import {dataset} from '@/lib/data';
+export async function GET(request:NextRequest){if(request.nextUrl.searchParams.get('fail')==='1'||request.headers.get('x-demo-fail')==='1')return NextResponse.json({message:'Demo API failure. Please retry.'},{status:503});const delay=Math.min(3000,Math.max(0,Number(request.nextUrl.searchParams.get('delay')??0)||0));if(delay)await new Promise(resolve=>setTimeout(resolve,delay));return NextResponse.json(dataset.providers);}
