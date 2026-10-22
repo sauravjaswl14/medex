@@ -1,2 +1,54 @@
-import {describe,it,expect} from 'vitest';import {finalPrice,prepare,facet,matches} from '../lib/engine';import {dataset} from '../lib/data';import {defaults} from '../lib/model';
-describe('pricing',()=>{it('applies percentage discount before charge',()=>expect(finalPrice({price:'6200.00',discount:'10.00',discountType:'percent',serviceCharge:'7.00',serviceChargeType:'percent'})).toBe(5970.6));it('rejects discounts exceeding base',()=>expect(finalPrice({price:'10',discount:'11',discountType:'amount',serviceCharge:'0',serviceChargeType:'amount'})).toBeNull())});describe('facets',()=>{const items=prepare(dataset);it('keeps distinct ultrasound categories',()=>{const ultrasound=dataset.categories.filter(x=>x.slug==='ultrasound');expect(ultrasound).toHaveLength(2);expect(new Set(ultrasound.map(x=>x.id)).size).toBe(2)});it('excludes inactive records',()=>expect(items.every(i=>i.service.status&&i.provider.status==='active'&&(!i.category||i.category.status))).toBe(true));it('ignores own dimension when counting',()=>{const f={...defaults,types:['package']};const counts=facet(items,f,'types',i=>i.service.type);expect(counts.get('lab_test')).toBeGreaterThan(0)});it('enforces currency for range',()=>expect(items.filter(i=>matches(i,{...defaults,max:'5000'}))).toHaveLength(0))});
+import { describe, it, expect } from "vitest";
+import { finalPrice, prepare, facet, matches } from "../lib/engine";
+import { dataset } from "../lib/data";
+import { defaults } from "../lib/model";
+describe("pricing", () => {
+  it("applies percentage discount before charge", () =>
+    expect(
+      finalPrice({
+        price: "6200.00",
+        discount: "10.00",
+        discountType: "percent",
+        serviceCharge: "7.00",
+        serviceChargeType: "percent",
+      }),
+    ).toBe(5970.6));
+  it("rejects discounts exceeding base", () =>
+    expect(
+      finalPrice({
+        price: "10",
+        discount: "11",
+        discountType: "amount",
+        serviceCharge: "0",
+        serviceChargeType: "amount",
+      }),
+    ).toBeNull());
+});
+describe("facets", () => {
+  const items = prepare(dataset);
+  it("keeps distinct ultrasound categories", () => {
+    const ultrasound = dataset.categories.filter(
+      (x) => x.slug === "ultrasound",
+    );
+    expect(ultrasound).toHaveLength(2);
+    expect(new Set(ultrasound.map((x) => x.id)).size).toBe(2);
+  });
+  it("excludes inactive records", () =>
+    expect(
+      items.every(
+        (i) =>
+          i.service.status &&
+          i.provider.status === "active" &&
+          (!i.category || i.category.status),
+      ),
+    ).toBe(true));
+  it("ignores own dimension when counting", () => {
+    const f = { ...defaults, types: ["package"] };
+    const counts = facet(items, f, "types", (i) => i.service.type);
+    expect(counts.get("lab_test")).toBeGreaterThan(0);
+  });
+  it("enforces currency for range", () =>
+    expect(
+      items.filter((i) => matches(i, { ...defaults, max: "5000" })),
+    ).toHaveLength(0));
+});

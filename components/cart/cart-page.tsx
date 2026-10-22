@@ -1,31 +1,733 @@
-'use client';
-import {useEffect,useRef,useState} from 'react';
-import {useMutation,useQuery,useQueryClient,QueryClient,QueryClientProvider} from '@tanstack/react-query';
-import {useForm} from 'react-hook-form';import {zodResolver} from '@hookform/resolvers/zod';
-import {z} from 'zod';import {ArrowLeft,CheckCircle2,AlertTriangle,RefreshCw,ShoppingBag,Trash2,Minus,Plus} from 'lucide-react';
-import Link from 'next/link';import {Cart,Group,Line,Order,checkoutEligible,summarize,unitPrice} from '@/lib/cart/model';
-import {Button} from '@/components/ui/button';
-const queryClient=new QueryClient({defaultOptions:{queries:{retry:1,staleTime:10000}}});
-const format=(amount:number,currency:string)=>new Intl.NumberFormat('en-US',{style:'currency',currency,minimumFractionDigits:2}).format(amount);
-const names:Record<string,string>={lab_test:'Lab tests',package:'Health packages',wellness:'Wellness',service:'Services',insurance:'Insurance',unknown:'Unavailable services'};
-const formSchema=z.object({paymentMethod:z.enum(['card','pay_at_clinic'])});
-const STORAGE='medex-checkout-v1';
-type Attempt={groupType:string;key:string;orderId?:string;status:'sending'|'pending'|'paid'|'failed'|'uncertain';paymentMethod:'card'|'pay_at_clinic';items:{id:string;quantity:number;wellnessPricingId?:string}[]};
-async function api<T>(path:string,init?:RequestInit):Promise<T>{const r=await fetch(path,{...init,headers:{'Content-Type':'application/json',...init?.headers}});if(!r.ok){const body=await r.json().catch(()=>({}));throw new Error(body.message??`Request failed (${r.status})`)}return r.status===204?undefined as T:r.json()}
-function CartView(){const qc=useQueryClient();const [fail,setFail]=useState('');const [delay,setDelay]=useState('350');const [attempts,setAttempts]=useState<Attempt[]>([]);const [ready,setReady]=useState(false);const [message,setMessage]=useState('');const [offline,setOffline]=useState(false);const [merges,setMerges]=useState<string[]>([]);const busy=useRef(new Set<string>());const quantities=useRef(new Map<string,number>());const [pendingQuantities,setPendingQuantities]=useState<Record<string,number>>({});
-const flags=(method:string)=>`?delay=${delay}${fail===method?'&fail=500':''}`;
-const cartQuery=useQuery({queryKey:['cart'],queryFn:()=>api<{cart:Cart}>('/api/cart'+flags('GET /cart'))});const cart=cartQuery.data?.cart;
-useEffect(()=>{try{setAttempts(JSON.parse(localStorage.getItem(STORAGE)??'[]'))}catch{}setReady(true);const check=()=>setOffline(!navigator.onLine);check();window.addEventListener('online',check);window.addEventListener('offline',check);return()=>{window.removeEventListener('online',check);window.removeEventListener('offline',check)}},[]);
-const persist=(updater:(old:Attempt[])=>Attempt[])=>setAttempts(old=>{const next=updater(old);localStorage.setItem(STORAGE,JSON.stringify(next));return next});
-useEffect(()=>{if(!ready)return;const pending=attempts.filter(a=>a.orderId&&a.status!=='paid');if(!pending.length)return;let cancelled=false;const reconcile=async()=>{for(const attempt of pending){try{const order=await api<Order>(`/api/orders/${attempt.orderId}`);if(!cancelled){persist(old=>old.map(a=>a.key===attempt.key?{...a,status:order.status}:a));if(order.status==='paid')qc.invalidateQueries({queryKey:['cart']})}}catch{}}};void reconcile();const timer=setInterval(reconcile,2500);return()=>{cancelled=true;clearInterval(timer)}},[ready,attempts.map(a=>`${a.key}:${a.status}:${a.orderId}`).join('|')]);
-const mutation=useMutation({mutationFn:async({id,body}:{id:string;body:Record<string,unknown>})=>api<{cart:Cart}>(`/api/cart/items/${id}${flags('PATCH')}`,{method:'PATCH',body:JSON.stringify(body)}),onSuccess:({cart})=>qc.setQueryData(['cart'],{cart}),onError:e=>{setMessage(`Change not saved: ${e.message}. Restored the saved quantity.`);qc.invalidateQueries({queryKey:['cart']})}});
-async function changeQuantity(line:Line,delta:number){const id=line.id;const current=quantities.get(id)??line.quantity;const next=Math.min(99,Math.max(1,current+delta));quantities.set(id,next);setPendingQuantities(old=>({...old,[id]:next}));if(busy.current.has(id))return;busy.current.add(id);try{while(true){const target=quantities.get(id)!;await api<{cart:Cart}>(`/api/cart/items/${id}${flags('PATCH')}`,{method:'PATCH',body:JSON.stringify({quantity:target})});if(quantities.get(id)===target)break}await qc.invalidateQueries({queryKey:['cart']});}catch(e){setMessage(e instanceof Error?`Quantity was not saved: ${e.message}`:'Unable to update quantity');await qc.invalidateQueries({queryKey:['cart']})}finally{busy.current.delete(id);quantities.delete(id);setPendingQuantities(old=>{const copy={...old};delete copy[id];return copy})}}
+"use client";
+import { useEffect, useRef, useState } from "react";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  ShoppingBag,
+  Trash2,
+  Minus,
+  Plus,
+} from "lucide-react";
+import Link from "next/link";
+import {
+  Cart,
+  Group,
+  Line,
+  Order,
+  checkoutEligible,
+  summarize,
+  unitPrice,
+} from "@/lib/cart/model";
+import { Button } from "@/components/ui/button";
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: 1, staleTime: 10000 } },
+});
+const format = (amount: number, currency: string) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+  }).format(amount);
+const names: Record<string, string> = {
+  lab_test: "Lab tests",
+  package: "Health packages",
+  wellness: "Wellness",
+  service: "Services",
+  insurance: "Insurance",
+  unknown: "Unavailable services",
+};
+const formSchema = z.object({
+  paymentMethod: z.enum(["card", "pay_at_clinic"]),
+});
+const STORAGE = "medex-checkout-v1";
+type Attempt = {
+  groupType: string;
+  key: string;
+  orderId?: string;
+  status: "sending" | "pending" | "paid" | "failed" | "uncertain";
+  paymentMethod: "card" | "pay_at_clinic";
+  items: { id: string; quantity: number; wellnessPricingId?: string }[];
+};
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(path, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...init?.headers },
+  });
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body.message ?? `Request failed (${r.status})`);
+  }
+  return r.status === 204 ? (undefined as T) : r.json();
 }
-async function remove(id:string){try{await api(`/api/cart/items/${id}${flags('DELETE')}`,{method:'DELETE'});setMessage('Service removed from cart');await qc.invalidateQueries({queryKey:['cart']});document.getElementById('cart-heading')?.focus()}catch(e){setMessage(`Could not remove item: ${e instanceof Error?e.message:'Try again'}`)}}
-async function merge(){try{const data=await import('@/data/task2-cart.json');const result=await api<{cart:Cart;changes:{detail:string}[]}>('/api/cart/merge'+flags('POST /cart/merge'),{method:'POST',body:JSON.stringify({items:data.guestCart})});qc.setQueryData(['cart'],{cart:result.cart});setMerges(result.changes.map(c=>c.detail));setMessage('Guest cart merged. Review the changes below.')}catch(e){setMessage(`Merge failed: ${e instanceof Error?e.message:'Try again'}`)}}
-async function checkoutGroup(group:Group,paymentMethod:'card'|'pay_at_clinic'){if(!checkoutEligible(group)||offline)return;const existing=attempts.find(a=>a.groupType===group.type&&a.status!=='paid');const items=existing?.items??group.items.map(i=>({id:i.id,quantity:i.quantity,wellnessPricingId:i.wellnessPricingId}));const key=existing?.key??crypto.randomUUID();persist(old=>old.some(a=>a.key===key)?old.map(a=>a.key===key?{...a,status:'sending'}:a):[...old,{groupType:group.type,key,items,paymentMethod,status:'sending'}]);try{const order=await api<Order>('/api/checkout'+flags('POST /checkout'),{method:'POST',body:JSON.stringify({groupType:group.type,items,paymentMethod:existing?.paymentMethod??paymentMethod,idempotencyKey:key})});persist(old=>old.map(a=>a.key===key?{...a,orderId:order.orderId,status:order.status}:a));setMessage(`${names[group.type]??group.type}: order ${order.orderId} created. Checking payment status.`)}catch(e){persist(old=>old.map(a=>a.key===key?{...a,status:'uncertain'}:a));setMessage(`Could not confirm ${names[group.type]??group.type}. Retry safely using the same checkout reference. ${e instanceof Error?e.message:''}`)}}
-async function checkoutAll(){if(!cart)return;for(const group of cart.groups.filter(checkoutEligible)){if(attempts.some(a=>a.groupType===group.type&&a.status==='paid'))continue;await checkoutGroup(group,'pay_at_clinic')}}
-const allSubtotals=cart?.groups.reduce<Record<string,number>>((totals,g)=>{for(const [currency,amount] of Object.entries(g.subtotals))totals[currency]=(totals[currency]??0)+amount;return totals},{})??{};
-return <div className="min-h-screen bg-slate-50 text-slate-900"><header className="bg-white border-b"><div className="max-w-6xl mx-auto p-5 flex items-center justify-between"><Link href="/" className="font-black text-teal-800 text-xl">medex</Link><Link href="/" className="text-sm flex gap-2 items-center text-teal-800"><ArrowLeft size={16}/> Explore services</Link></div></header><main className="max-w-6xl mx-auto px-4 py-9"><div className="flex flex-wrap gap-4 items-end justify-between mb-7"><div><p className="text-teal-700 text-sm font-semibold">YOUR BOOKINGS</p><h1 id="cart-heading" tabIndex={-1} className="text-3xl font-bold mt-1">Your cart</h1><p className="text-slate-500 mt-2">Different service types are booked separately. Your payment choices can differ.</p></div><div className="text-sm text-slate-500">{cart?.totalItems??0} items</div></div>{offline&&<p role="status" className="p-4 rounded-lg bg-amber-50 mb-4">You are offline. Changes and checkout are paused until your connection returns.</p>}{message&&<div role="status" aria-live="polite" className="p-4 bg-teal-50 rounded-lg mb-4 flex justify-between gap-3"><span>{message}</span><button aria-label="Dismiss message" onClick={()=>setMessage('')}>×</button></div>}<details className="bg-white rounded-xl border p-4 mb-6"><summary className="cursor-pointer font-semibold">Developer controls · simulate slow or failing requests</summary><div className="flex flex-wrap gap-3 mt-4"><label className="text-sm">Delay <select className="field" value={delay} onChange={e=>setDelay(e.target.value)}><option value="0">Instant</option><option value="350">350 ms</option><option value="2500">2.5 seconds</option><option value="6000">6 seconds</option></select></label><label className="text-sm">Fail endpoint <select className="field" value={fail} onChange={e=>setFail(e.target.value)}><option value="">None</option>{['GET /cart','PATCH','DELETE','POST /cart/merge','POST /checkout'].map(x=><option key={x} value={x}>{x}</option>)}</select></label><Button onClick={()=>cartQuery.refetch()}>Reload cart</Button></div></details>{cartQuery.isPending?<div className="space-y-4">{[0,1,2].map(i=><div key={i} className="skeleton rounded-xl h-52"/>)}</div>:cartQuery.isError?<div role="alert" className="bg-white border rounded-xl p-8"><p>We couldn't load your cart. {cartQuery.error.message}</p><Button onClick={()=>cartQuery.refetch()}><RefreshCw size={16}/> Retry</Button></div>:!cart?.groups.length?<div className="bg-white border rounded-xl text-center p-14"><ShoppingBag className="mx-auto text-teal-700"/><h2 className="font-bold text-xl mt-4">Your cart is empty</h2><Link href="/" className="text-teal-700 underline">Explore services</Link></div>:<div className="grid lg:grid-cols-[minmax(0,1fr)_290px] gap-6"><div className="space-y-5">{cart.groups.map(group=><section key={group.type} className="bg-white rounded-xl border overflow-hidden"><div className="p-5 border-b flex justify-between items-center"><div><h2 className="font-bold text-lg">{names[group.type]??group.type}</h2><p className="text-slate-500 text-sm">{group.itemCount} items · separate order</p></div><div className="text-right text-sm font-semibold">{Object.entries(group.subtotals).map(([currency,amount])=><div key={currency}>{format(amount,currency)}</div>)}{group.unpricedItems>0&&<div className="text-amber-700">{group.unpricedItems} awaiting price or unavailable</div>}</div></div>{group.items.map(line=><div key={line.id} className="p-5 border-b last:border-0 flex flex-wrap items-center justify-between gap-4"><div className="flex-1 min-w-48"><h3 className="font-semibold">{line.product.title??'Service no longer available'}</h3><p className="text-slate-500 text-sm">{line.product.providerName??'Removed by provider'}</p>{!line.product.id&&<p className="text-red-700 text-sm mt-1">Unavailable · remove to continue</p>}{line.product.type==='wellness'&&<label className="block text-sm mt-3">Duration <select className="field mt-1" value={line.wellnessPricingId??''} onChange={e=>mutation.mutate({id:line.id,body:{wellnessPricingId:e.target.value}})} disabled={mutation.isPending||offline}><option value="">Choose duration</option>{line.product.wellnessPricing?.map(p=><option key={p.id} value={p.id}>{p.durationInMinutes} min · {format(p.amount_after_service_charge,line.product.currency??'THB')}</option>)}</select></label>}</div><div className="flex items-center gap-3"><div className="flex items-center border rounded-lg"><button aria-label={`Decrease ${line.product.title??'service'} quantity`} disabled={offline||!line.product.id||(pendingQuantities[line.id]??line.quantity)<=1} className="p-2 disabled:opacity-30" onClick={()=>changeQuantity(line,-1)}><Minus size={16}/></button><span className="min-w-7 text-center" aria-live="polite">{pendingQuantities[line.id]??line.quantity}</span><button aria-label={`Increase ${line.product.title??'service'} quantity`} disabled={offline||!line.product.id} className="p-2 disabled:opacity-30" onClick={()=>changeQuantity(line,1)}><Plus size={16}/></button></div><div className="text-right min-w-24 font-semibold">{unitPrice(line)===null?<span className="text-amber-700 text-sm">Price pending</span>:format(unitPrice(line)!*(pendingQuantities[line.id]??line.quantity),line.product.currency!)}</div><button aria-label={`Remove ${line.product.title??'unavailable service'}`} className="p-2 text-red-700 hover:bg-red-50 rounded" onClick={()=>remove(line.id)} disabled={offline}><Trash2 size={17}/></button></div></div>)}<CheckoutControls group={group} offline={offline} attempt={attempts.find(a=>a.groupType===group.type)} onCheckout={checkoutGroup}/></section>)}<section className="bg-white border rounded-xl p-5"><h2 className="font-semibold">Have items from before signing in?</h2><p className="text-sm text-slate-500 my-2">Preview the supplied guest cart merge. Matching items combine, new items are added, and removed products are skipped.</p><Button disabled={offline} onClick={merge}>Merge sample guest cart</Button>{merges.length>0&&<ul className="mt-3 list-disc pl-5 text-sm" aria-live="polite">{merges.map((m,i)=><li key={i}>{m}</li>)}</ul>}</section></div><aside className="lg:sticky lg:top-5 self-start bg-white rounded-xl border p-5"><h2 className="font-bold text-xl mb-3">Payment overview</h2><p className="text-sm text-slate-500 mb-3">Estimated totals by currency. These are not converted or combined.</p>{Object.entries(allSubtotals).map(([currency,amount])=><div key={currency} className="flex justify-between py-2 border-b"><span>{currency}</span><strong>{format(amount,currency)}</strong></div>)}{cart.groups.some(g=>g.unpricedItems>0)&&<p className="text-amber-800 text-sm mt-3">Some prices are still unknown. Choose a wellness duration before paying.</p>}<Button className="w-full mt-5" disabled={offline||!cart.groups.some(checkoutEligible)} onClick={checkoutAll}>Checkout all ready groups</Button><p className="text-xs text-slate-500 mt-3">Each ready service-type group creates a separate order. Bulk checkout uses pay at clinic; choose card within a group.</p><h3 className="font-semibold mt-6 mb-2">Orders and recovery</h3><div aria-live="polite" className="space-y-2">{attempts.length===0?<p className="text-sm text-slate-500">No orders submitted yet.</p>:attempts.map(a=><div key={a.key} className="rounded-lg bg-slate-50 p-3 text-sm"><div className="font-semibold">{names[a.groupType]??a.groupType}</div><div>{a.status==='paid'?<CheckCircle2 size={15} className="inline text-teal-700"/>:<AlertTriangle size={15} className="inline text-amber-600"/>} {a.status==='uncertain'?'Confirmation needed':a.status}</div><div className="text-xs text-slate-500 break-all">{a.orderId??'Awaiting order reference'}</div>{a.status==='uncertain'&&<button className="underline text-teal-800 mt-2" onClick={()=>{const g=cart.groups.find(g=>g.type===a.groupType);if(g)checkoutGroup(g,a.paymentMethod)}}>Retry safely</button>}</div>)}</div></aside></div>}</main></div>}
-function CheckoutControls({group,offline,attempt,onCheckout}:{group:Group;offline:boolean;attempt?:Attempt;onCheckout:(g:Group,p:'card'|'pay_at_clinic')=>void}){const {register,watch,formState:{errors}}=useForm<z.infer<typeof formSchema>>({resolver:zodResolver(formSchema),defaultValues:{paymentMethod:'pay_at_clinic'}});const payment=watch('paymentMethod');const disabled=offline||!checkoutEligible(group)||!!attempt&&attempt.status!=='failed'&&attempt.status!=='uncertain';return <div className="p-4 bg-slate-50 flex flex-wrap items-center justify-between gap-3"><label className="text-sm">Payment method <select {...register('paymentMethod')} className="field mt-1" disabled={!!attempt}><option value="pay_at_clinic">Pay at clinic</option><option value="card">Card</option></select>{errors.paymentMethod&&<span role="alert">{errors.paymentMethod.message}</span>}</label><Button disabled={disabled} onClick={()=>onCheckout(group,payment)}>{attempt?.status==='paid'?'Booked successfully':attempt?.status==='uncertain'?'Retry this group':`Checkout ${names[group.type]??group.type}`}</Button>{!checkoutEligible(group)&&<p className="w-full text-xs text-amber-800">Resolve missing prices or unavailable items before checkout.</p>}</div>}
-export default function CartPage(){return <QueryClientProvider client={queryClient}><CartView/></QueryClientProvider>}
+function CartView() {
+  const qc = useQueryClient();
+  const [fail, setFail] = useState("");
+  const [delay, setDelay] = useState("350");
+  const [attempts, setAttempts] = useState<Attempt[]>([]);
+  const [ready, setReady] = useState(false);
+  const [message, setMessage] = useState("");
+  const [offline, setOffline] = useState(false);
+  const [merges, setMerges] = useState<string[]>([]);
+  const busy = useRef(new Set<string>());
+  const quantities = useRef(new Map<string, number>());
+  const [pendingQuantities, setPendingQuantities] = useState<
+    Record<string, number>
+  >({});
+  const flags = (method: string) =>
+    `?delay=${delay}${fail === method ? "&fail=500" : ""}`;
+  const cartQuery = useQuery({
+    queryKey: ["cart"],
+    queryFn: () => api<{ cart: Cart }>("/api/cart" + flags("GET /cart")),
+  });
+  const cart = cartQuery.data?.cart;
+  useEffect(() => {
+    try {
+      setAttempts(JSON.parse(localStorage.getItem(STORAGE) ?? "[]"));
+    } catch {}
+    setReady(true);
+    const check = () => setOffline(!navigator.onLine);
+    check();
+    window.addEventListener("online", check);
+    window.addEventListener("offline", check);
+    return () => {
+      window.removeEventListener("online", check);
+      window.removeEventListener("offline", check);
+    };
+  }, []);
+  const persist = (updater: (old: Attempt[]) => Attempt[]) =>
+    setAttempts((old) => {
+      const next = updater(old);
+      localStorage.setItem(STORAGE, JSON.stringify(next));
+      return next;
+    });
+  useEffect(() => {
+    if (!ready) return;
+    const pending = attempts.filter((a) => a.orderId && a.status !== "paid");
+    if (!pending.length) return;
+    let cancelled = false;
+    const reconcile = async () => {
+      for (const attempt of pending) {
+        try {
+          const order = await api<Order>(`/api/orders/${attempt.orderId}`);
+          if (!cancelled) {
+            persist((old) =>
+              old.map((a) =>
+                a.key === attempt.key ? { ...a, status: order.status } : a,
+              ),
+            );
+            if (order.status === "paid")
+              qc.invalidateQueries({ queryKey: ["cart"] });
+          }
+        } catch {}
+      }
+    };
+    void reconcile();
+    const timer = setInterval(reconcile, 2500);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [
+    ready,
+    attempts.map((a) => `${a.key}:${a.status}:${a.orderId}`).join("|"),
+  ]);
+  const mutation = useMutation({
+    mutationFn: async ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: Record<string, unknown>;
+    }) =>
+      api<{ cart: Cart }>(`/api/cart/items/${id}${flags("PATCH")}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: ({ cart }) => qc.setQueryData(["cart"], { cart }),
+    onError: (e) => {
+      setMessage(
+        `Change not saved: ${e.message}. Restored the saved quantity.`,
+      );
+      qc.invalidateQueries({ queryKey: ["cart"] });
+    },
+  });
+  async function changeQuantity(line: Line, delta: number) {
+    const id = line.id;
+    const current = quantities.current.get(id) ?? line.quantity;
+    const next = Math.min(99, Math.max(1, current + delta));
+    quantities.current.set(id, next);
+    setPendingQuantities((old) => ({ ...old, [id]: next }));
+    if (busy.current.has(id)) return;
+    busy.current.add(id);
+    try {
+      while (true) {
+        const target = quantities.current.get(id)!;
+        await api<{ cart: Cart }>(`/api/cart/items/${id}${flags("PATCH")}`, {
+          method: "PATCH",
+          body: JSON.stringify({ quantity: target }),
+        });
+        if (quantities.current.get(id) === target) break;
+      }
+      await qc.invalidateQueries({ queryKey: ["cart"] });
+    } catch (e) {
+      setMessage(
+        e instanceof Error ?
+          `Quantity was not saved: ${e.message}`
+        : "Unable to update quantity",
+      );
+      await qc.invalidateQueries({ queryKey: ["cart"] });
+    } finally {
+      busy.current.delete(id);
+      quantities.current.delete(id);
+      setPendingQuantities((old) => {
+        const copy = { ...old };
+        delete copy[id];
+        return copy;
+      });
+    }
+  }
+  async function remove(id: string) {
+    try {
+      await api(`/api/cart/items/${id}${flags("DELETE")}`, {
+        method: "DELETE",
+      });
+      setMessage("Service removed from cart");
+      await qc.invalidateQueries({ queryKey: ["cart"] });
+      document.getElementById("cart-heading")?.focus();
+    } catch (e) {
+      setMessage(
+        `Could not remove item: ${e instanceof Error ? e.message : "Try again"}`,
+      );
+    }
+  }
+  async function merge() {
+    try {
+      const data = await import("@/data/task2-cart.json");
+      const result = await api<{ cart: Cart; changes: { detail: string }[] }>(
+        "/api/cart/merge" + flags("POST /cart/merge"),
+        { method: "POST", body: JSON.stringify({ items: data.guestCart }) },
+      );
+      qc.setQueryData(["cart"], { cart: result.cart });
+      setMerges(result.changes.map((c) => c.detail));
+      setMessage("Guest cart merged. Review the changes below.");
+    } catch (e) {
+      setMessage(
+        `Merge failed: ${e instanceof Error ? e.message : "Try again"}`,
+      );
+    }
+  }
+  async function checkoutGroup(
+    group: Group,
+    paymentMethod: "card" | "pay_at_clinic",
+  ) {
+    if (!checkoutEligible(group) || offline) return;
+    const existing = attempts.find(
+      (a) => a.groupType === group.type && a.status !== "paid",
+    );
+    const items =
+      existing?.items ??
+      group.items.map((i) => ({
+        id: i.id,
+        quantity: i.quantity,
+        wellnessPricingId: i.wellnessPricingId,
+      }));
+    const key = existing?.key ?? crypto.randomUUID();
+    persist((old) =>
+      old.some((a) => a.key === key) ?
+        old.map((a) => (a.key === key ? { ...a, status: "sending" } : a))
+      : [
+          ...old,
+          {
+            groupType: group.type,
+            key,
+            items,
+            paymentMethod,
+            status: "sending",
+          },
+        ],
+    );
+    try {
+      const order = await api<Order>(
+        "/api/checkout" + flags("POST /checkout"),
+        {
+          method: "POST",
+          body: JSON.stringify({
+            groupType: group.type,
+            items,
+            paymentMethod: existing?.paymentMethod ?? paymentMethod,
+            idempotencyKey: key,
+          }),
+        },
+      );
+      persist((old) =>
+        old.map((a) =>
+          a.key === key ?
+            { ...a, orderId: order.orderId, status: order.status }
+          : a,
+        ),
+      );
+      setMessage(
+        `${names[group.type] ?? group.type}: order ${order.orderId} created. Checking payment status.`,
+      );
+    } catch (e) {
+      persist((old) =>
+        old.map((a) => (a.key === key ? { ...a, status: "uncertain" } : a)),
+      );
+      setMessage(
+        `Could not confirm ${names[group.type] ?? group.type}. Retry safely using the same checkout reference. ${e instanceof Error ? e.message : ""}`,
+      );
+    }
+  }
+  async function checkoutAll() {
+    if (!cart) return;
+    for (const group of cart.groups.filter(checkoutEligible)) {
+      if (
+        attempts.some((a) => a.groupType === group.type && a.status === "paid")
+      )
+        continue;
+      await checkoutGroup(group, "pay_at_clinic");
+    }
+  }
+  const allSubtotals =
+    cart?.groups.reduce<Record<string, number>>((totals, g) => {
+      for (const [currency, amount] of Object.entries(g.subtotals))
+        totals[currency] = (totals[currency] ?? 0) + amount;
+      return totals;
+    }, {}) ?? {};
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      <header className="bg-white border-b">
+        <div className="max-w-6xl mx-auto p-5 flex items-center justify-between">
+          <Link href="/" className="font-black text-teal-800 text-xl">
+            medex
+          </Link>
+          <Link
+            href="/"
+            className="text-sm flex gap-2 items-center text-teal-800"
+          >
+            <ArrowLeft size={16} /> Explore services
+          </Link>
+        </div>
+      </header>
+      <main className="max-w-6xl mx-auto px-4 py-9">
+        <div className="flex flex-wrap gap-4 items-end justify-between mb-7">
+          <div>
+            <p className="text-teal-700 text-sm font-semibold">YOUR BOOKINGS</p>
+            <h1
+              id="cart-heading"
+              tabIndex={-1}
+              className="text-3xl font-bold mt-1"
+            >
+              Your cart
+            </h1>
+            <p className="text-slate-500 mt-2">
+              Different service types are booked separately. Your payment
+              choices can differ.
+            </p>
+          </div>
+          <div className="text-sm text-slate-500">
+            {cart?.totalItems ?? 0} items
+          </div>
+        </div>
+        {offline && (
+          <p role="status" className="p-4 rounded-lg bg-amber-50 mb-4">
+            You are offline. Changes and checkout are paused until your
+            connection returns.
+          </p>
+        )}
+        {message && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="p-4 bg-teal-50 rounded-lg mb-4 flex justify-between gap-3"
+          >
+            <span>{message}</span>
+            <button aria-label="Dismiss message" onClick={() => setMessage("")}>
+              ×
+            </button>
+          </div>
+        )}
+        <details className="bg-white rounded-xl border p-4 mb-6">
+          <summary className="cursor-pointer font-semibold">
+            Developer controls · simulate slow or failing requests
+          </summary>
+          <div className="flex flex-wrap gap-3 mt-4">
+            <label className="text-sm">
+              Delay{" "}
+              <select
+                className="field"
+                value={delay}
+                onChange={(e) => setDelay(e.target.value)}
+              >
+                <option value="0">Instant</option>
+                <option value="350">350 ms</option>
+                <option value="2500">2.5 seconds</option>
+                <option value="6000">6 seconds</option>
+              </select>
+            </label>
+            <label className="text-sm">
+              Fail endpoint{" "}
+              <select
+                className="field"
+                value={fail}
+                onChange={(e) => setFail(e.target.value)}
+              >
+                <option value="">None</option>
+                {[
+                  "GET /cart",
+                  "PATCH",
+                  "DELETE",
+                  "POST /cart/merge",
+                  "POST /checkout",
+                ].map((x) => (
+                  <option key={x} value={x}>
+                    {x}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button onClick={() => cartQuery.refetch()}>Reload cart</Button>
+          </div>
+        </details>
+        {cartQuery.isPending ?
+          <div className="space-y-4">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="skeleton rounded-xl h-52" />
+            ))}
+          </div>
+        : cartQuery.isError ?
+          <div role="alert" className="bg-white border rounded-xl p-8">
+            <p>We couldn't load your cart. {cartQuery.error.message}</p>
+            <Button onClick={() => cartQuery.refetch()}>
+              <RefreshCw size={16} /> Retry
+            </Button>
+          </div>
+        : !cart?.groups.length ?
+          <div className="bg-white border rounded-xl text-center p-14">
+            <ShoppingBag className="mx-auto text-teal-700" />
+            <h2 className="font-bold text-xl mt-4">Your cart is empty</h2>
+            <Link href="/" className="text-teal-700 underline">
+              Explore services
+            </Link>
+          </div>
+        : <div className="grid lg:grid-cols-[minmax(0,1fr)_290px] gap-6">
+            <div className="space-y-5">
+              {cart.groups.map((group) => (
+                <section
+                  key={group.type}
+                  className="bg-white rounded-xl border overflow-hidden"
+                >
+                  <div className="p-5 border-b flex justify-between items-center">
+                    <div>
+                      <h2 className="font-bold text-lg">
+                        {names[group.type] ?? group.type}
+                      </h2>
+                      <p className="text-slate-500 text-sm">
+                        {group.itemCount} items · separate order
+                      </p>
+                    </div>
+                    <div className="text-right text-sm font-semibold">
+                      {Object.entries(group.subtotals).map(
+                        ([currency, amount]) => (
+                          <div key={currency}>{format(amount, currency)}</div>
+                        ),
+                      )}
+                      {group.unpricedItems > 0 && (
+                        <div className="text-amber-700">
+                          {group.unpricedItems} awaiting price or unavailable
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {group.items.map((line) => (
+                    <div
+                      key={line.id}
+                      className="p-5 border-b last:border-0 flex flex-wrap items-center justify-between gap-4"
+                    >
+                      <div className="flex-1 min-w-48">
+                        <h3 className="font-semibold">
+                          {line.product.title ?? "Service no longer available"}
+                        </h3>
+                        <p className="text-slate-500 text-sm">
+                          {line.product.providerName ?? "Removed by provider"}
+                        </p>
+                        {!line.product.id && (
+                          <p className="text-red-700 text-sm mt-1">
+                            Unavailable · remove to continue
+                          </p>
+                        )}
+                        {line.product.type === "wellness" && (
+                          <label className="block text-sm mt-3">
+                            Duration{" "}
+                            <select
+                              className="field mt-1"
+                              value={line.wellnessPricingId ?? ""}
+                              onChange={(e) =>
+                                mutation.mutate({
+                                  id: line.id,
+                                  body: { wellnessPricingId: e.target.value },
+                                })
+                              }
+                              disabled={mutation.isPending || offline}
+                            >
+                              <option value="">Choose duration</option>
+                              {line.product.wellnessPricing?.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.durationInMinutes} min ·{" "}
+                                  {format(
+                                    p.amount_after_service_charge,
+                                    line.product.currency ?? "THB",
+                                  )}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center border rounded-lg">
+                          <button
+                            aria-label={`Decrease ${line.product.title ?? "service"} quantity`}
+                            disabled={
+                              offline ||
+                              !line.product.id ||
+                              (pendingQuantities[line.id] ?? line.quantity) <= 1
+                            }
+                            className="p-2 disabled:opacity-30"
+                            onClick={() => changeQuantity(line, -1)}
+                          >
+                            <Minus size={16} />
+                          </button>
+                          <span
+                            className="min-w-7 text-center"
+                            aria-live="polite"
+                          >
+                            {pendingQuantities[line.id] ?? line.quantity}
+                          </span>
+                          <button
+                            aria-label={`Increase ${line.product.title ?? "service"} quantity`}
+                            disabled={offline || !line.product.id}
+                            className="p-2 disabled:opacity-30"
+                            onClick={() => changeQuantity(line, 1)}
+                          >
+                            <Plus size={16} />
+                          </button>
+                        </div>
+                        <div className="text-right min-w-24 font-semibold">
+                          {unitPrice(line) === null ?
+                            <span className="text-amber-700 text-sm">
+                              Price pending
+                            </span>
+                          : format(
+                              unitPrice(line)! *
+                                (pendingQuantities[line.id] ?? line.quantity),
+                              line.product.currency!,
+                            )
+                          }
+                        </div>
+                        <button
+                          aria-label={`Remove ${line.product.title ?? "unavailable service"}`}
+                          className="p-2 text-red-700 hover:bg-red-50 rounded"
+                          onClick={() => remove(line.id)}
+                          disabled={offline}
+                        >
+                          <Trash2 size={17} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <CheckoutControls
+                    group={group}
+                    offline={offline}
+                    attempt={attempts.find((a) => a.groupType === group.type)}
+                    onCheckout={checkoutGroup}
+                  />
+                </section>
+              ))}
+              <section className="bg-white border rounded-xl p-5">
+                <h2 className="font-semibold">
+                  Have items from before signing in?
+                </h2>
+                <p className="text-sm text-slate-500 my-2">
+                  Preview the supplied guest cart merge. Matching items combine,
+                  new items are added, and removed products are skipped.
+                </p>
+                <Button disabled={offline} onClick={merge}>
+                  Merge sample guest cart
+                </Button>
+                {merges.length > 0 && (
+                  <ul
+                    className="mt-3 list-disc pl-5 text-sm"
+                    aria-live="polite"
+                  >
+                    {merges.map((m, i) => (
+                      <li key={i}>{m}</li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            </div>
+            <aside className="lg:sticky lg:top-5 self-start bg-white rounded-xl border p-5">
+              <h2 className="font-bold text-xl mb-3">Payment overview</h2>
+              <p className="text-sm text-slate-500 mb-3">
+                Estimated totals by currency. These are not converted or
+                combined.
+              </p>
+              {Object.entries(allSubtotals).map(([currency, amount]) => (
+                <div
+                  key={currency}
+                  className="flex justify-between py-2 border-b"
+                >
+                  <span>{currency}</span>
+                  <strong>{format(amount, currency)}</strong>
+                </div>
+              ))}
+              {cart.groups.some((g) => g.unpricedItems > 0) && (
+                <p className="text-amber-800 text-sm mt-3">
+                  Some prices are still unknown. Choose a wellness duration
+                  before paying.
+                </p>
+              )}
+              <Button
+                className="w-full mt-5"
+                disabled={offline || !cart.groups.some(checkoutEligible)}
+                onClick={checkoutAll}
+              >
+                Checkout all ready groups
+              </Button>
+              <p className="text-xs text-slate-500 mt-3">
+                Each ready service-type group creates a separate order. Bulk
+                checkout uses pay at clinic; choose card within a group.
+              </p>
+              <h3 className="font-semibold mt-6 mb-2">Orders and recovery</h3>
+              <div aria-live="polite" className="space-y-2">
+                {attempts.length === 0 ?
+                  <p className="text-sm text-slate-500">
+                    No orders submitted yet.
+                  </p>
+                : attempts.map((a) => (
+                    <div
+                      key={a.key}
+                      className="rounded-lg bg-slate-50 p-3 text-sm"
+                    >
+                      <div className="font-semibold">
+                        {names[a.groupType] ?? a.groupType}
+                      </div>
+                      <div>
+                        {a.status === "paid" ?
+                          <CheckCircle2
+                            size={15}
+                            className="inline text-teal-700"
+                          />
+                        : <AlertTriangle
+                            size={15}
+                            className="inline text-amber-600"
+                          />
+                        }{" "}
+                        {a.status === "uncertain" ?
+                          "Confirmation needed"
+                        : a.status}
+                      </div>
+                      <div className="text-xs text-slate-500 break-all">
+                        {a.orderId ?? "Awaiting order reference"}
+                      </div>
+                      {a.status === "uncertain" && (
+                        <button
+                          className="underline text-teal-800 mt-2"
+                          onClick={() => {
+                            const g = cart.groups.find(
+                              (g) => g.type === a.groupType,
+                            );
+                            if (g) checkoutGroup(g, a.paymentMethod);
+                          }}
+                        >
+                          Retry safely
+                        </button>
+                      )}
+                    </div>
+                  ))
+                }
+              </div>
+            </aside>
+          </div>
+        }
+      </main>
+    </div>
+  );
+}
+function CheckoutControls({
+  group,
+  offline,
+  attempt,
+  onCheckout,
+}: {
+  group: Group;
+  offline: boolean;
+  attempt?: Attempt;
+  onCheckout: (g: Group, p: "card" | "pay_at_clinic") => void;
+}) {
+  const {
+    register,
+    watch,
+    formState: { errors },
+  } = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: { paymentMethod: "pay_at_clinic" },
+  });
+  const payment = watch("paymentMethod");
+  const disabled =
+    offline ||
+    !checkoutEligible(group) ||
+    (!!attempt &&
+      attempt.status !== "failed" &&
+      attempt.status !== "uncertain");
+  return (
+    <div className="p-4 bg-slate-50 flex flex-wrap items-center justify-between gap-3">
+      <label className="text-sm">
+        Payment method{" "}
+        <select
+          {...register("paymentMethod")}
+          className="field mt-1"
+          disabled={!!attempt}
+        >
+          <option value="pay_at_clinic">Pay at clinic</option>
+          <option value="card">Card</option>
+        </select>
+        {errors.paymentMethod && (
+          <span role="alert">{errors.paymentMethod.message}</span>
+        )}
+      </label>
+      <Button disabled={disabled} onClick={() => onCheckout(group, payment)}>
+        {attempt?.status === "paid" ?
+          "Booked successfully"
+        : attempt?.status === "uncertain" ?
+          "Retry this group"
+        : `Checkout ${names[group.type] ?? group.type}`}
+      </Button>
+      {!checkoutEligible(group) && (
+        <p className="w-full text-xs text-amber-800">
+          Resolve missing prices or unavailable items before checkout.
+        </p>
+      )}
+    </div>
+  );
+}
+export default function CartPage() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <CartView />
+    </QueryClientProvider>
+  );
+}

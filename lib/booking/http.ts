@@ -1,2 +1,36 @@
-import {NextRequest,NextResponse} from 'next/server';import {BookingError} from './store';
-export async function reply(req:NextRequest,fn:()=>unknown,status=200){const delay=Math.max(0,Math.min(10000,Number(req.nextUrl.searchParams.get('delay')??req.headers.get('x-mock-delay')??350)||0));await new Promise(r=>setTimeout(r,delay));const failure=req.nextUrl.searchParams.get('fail')??req.headers.get('x-mock-fail');if(failure)return NextResponse.json({message:failure==='409'?'Another customer just booked this slot':`Injected ${failure} failure`},{status:Number(failure)||500});try{return NextResponse.json(fn(),{status})}catch(e){return NextResponse.json({message:e instanceof Error?e.message:'Unexpected error'},{status:e instanceof BookingError?e.status:500})}}
+import { NextRequest, NextResponse } from "next/server";
+import { BookingError } from "./store";
+export async function reply(req: NextRequest, fn: () => unknown, status = 200) {
+  const delay = Math.max(
+    0,
+    Math.min(
+      10000,
+      Number(
+        req.nextUrl.searchParams.get("delay") ??
+          req.headers.get("x-mock-delay") ??
+          350,
+      ) || 0,
+    ),
+  );
+  await new Promise((r) => setTimeout(r, delay));
+  const failure =
+    req.nextUrl.searchParams.get("fail") ?? req.headers.get("x-mock-fail");
+  if (failure)
+    return NextResponse.json(
+      {
+        message:
+          failure === "409"
+            ? "Another customer just booked this slot"
+            : `Injected ${failure} failure`,
+      },
+      { status: Number(failure) || 500 },
+    );
+  try {
+    return NextResponse.json(fn(), { status });
+  } catch (e) {
+    return NextResponse.json(
+      { message: e instanceof Error ? e.message : "Unexpected error" },
+      { status: e instanceof BookingError ? e.status : 500 },
+    );
+  }
+}

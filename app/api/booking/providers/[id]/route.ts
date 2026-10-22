@@ -1,1 +1,10 @@
-import {NextRequest} from 'next/server';import {reply} from '@/lib/booking/http';import {getProvider} from '@/lib/booking/store';export async function GET(req:NextRequest,{params}:{params:Promise<{id:string}>}){const {id}=await params;return reply(req,()=>({provider:getProvider(Number(id))}))}
+import { NextRequest } from "next/server";
+import { reply } from "@/lib/booking/http";
+import { getProvider } from "@/lib/booking/store";
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  return reply(req, () => ({ provider: getProvider(Number(id)) }));
+}
