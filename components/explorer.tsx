@@ -56,6 +56,69 @@ const money = (value: number, currency: string) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
+
+interface ProviderFilterProps {
+  data: Dataset;
+  value: Filters;
+  count: (
+    dimension: Parameters<typeof facet>[2],
+    key: (i: Item) => string,
+    k: string,
+  ) => number;
+  option: (
+    title: string,
+    selected: boolean,
+    n: number,
+    click: () => void,
+  ) => React.ReactNode;
+  update: (patch: Partial<Filters>) => void;
+}
+
+const ProviderFilter = ({
+  data,
+  value,
+  count,
+  option,
+  update,
+}: ProviderFilterProps) => {
+  const [providerSearch, setProviderSearch] = useState("");
+
+  return (
+    <section>
+      <h3 className="font-semibold mb-2">Providers</h3>
+      <input
+        className="field mb-2"
+        placeholder="Find a provider"
+        aria-label="Find provider filter"
+        value={providerSearch}
+        onChange={(e) => setProviderSearch(e.target.value)}
+      />
+      <div className="max-h-44 overflow-auto">
+        {data.providers
+          .filter(
+            (p) =>
+              p.status === "active" &&
+              p.name.toLowerCase().includes(providerSearch.toLowerCase()),
+          )
+          .map((p) =>
+            option(
+              p.name,
+              value.providers.includes(String(p.id)),
+              count("providers", (i) => String(i.provider.id), String(p.id)),
+              () =>
+                update({
+                  providers:
+                    value.providers.includes(String(p.id)) ?
+                      value.providers.filter((x) => x !== String(p.id))
+                    : [...value.providers, String(p.id)],
+                }),
+            ),
+          )}
+      </div>
+    </section>
+  );
+};
+
 function Content({
   initial,
   initialData,
@@ -68,9 +131,9 @@ function Content({
   const [draft, setDraft] = useState(initial);
   const [drawer, setDrawer] = useState(false);
   const [expanded, setExpanded] = useState<number[]>([]);
-  const [providerSearch, setProviderSearch] = useState("");
   const [pending, startTransition] = useTransition();
   const [isOffline, setOffline] = useState(false);
+
   const [localSearch, setLocalSearch] = useState(initial.q);
   const deferredSearch = useDeferredValue(localSearch);
   useEffect(() => {
@@ -175,18 +238,18 @@ function Content({
         .filter((p) => p.status === "active")
         .flatMap((p) =>
           [
-            p.providerInformation.city
-              ? {
-                  key: p.providerInformation.city.slug,
-                  label: p.providerInformation.city.name,
-                }
-              : null,
-            p.providerInformation.country
-              ? {
-                  key: p.providerInformation.country.alphaCode,
-                  label: p.providerInformation.country.name,
-                }
-              : null,
+            p.providerInformation.city ?
+              {
+                key: p.providerInformation.city.slug,
+                label: p.providerInformation.city.name,
+              }
+            : null,
+            p.providerInformation.country ?
+              {
+                key: p.providerInformation.country.alphaCode,
+                label: p.providerInformation.country.name,
+              }
+            : null,
           ].filter((x): x is { key: string; label: string } => x !== null),
         )
         .map((x) => [x.key, x]),
@@ -225,9 +288,9 @@ function Content({
             aria-hidden
             className={
               "flex h-4 w-4 items-center justify-center rounded border " +
-              (selected
-                ? "border-teal-700 bg-teal-700 text-white"
-                : "border-slate-300")
+              (selected ?
+                "border-teal-700 bg-teal-700 text-white"
+              : "border-slate-300")
             }
           >
             {selected ? "✓" : ""}
@@ -257,8 +320,9 @@ function Content({
               count("types", (i) => i.service.type, k),
               () =>
                 update({
-                  types: value.types.includes(k)
-                    ? value.types.filter((t) => t !== k)
+                  types:
+                    value.types.includes(k) ?
+                      value.types.filter((t) => t !== k)
                     : [...value.types, k],
                   category: "",
                   subcategory: "",
@@ -339,12 +403,14 @@ function Content({
                   !count(
                     "location",
                     (i) =>
-                      [
-                        i.provider.providerInformation.city?.slug,
-                        i.provider.providerInformation.country?.alphaCode,
-                      ].includes(l.key)
-                        ? l.key
-                        : "",
+                      (
+                        [
+                          i.provider.providerInformation.city?.slug,
+                          i.provider.providerInformation.country?.alphaCode,
+                        ].includes(l.key)
+                      ) ?
+                        l.key
+                      : "",
                     l.key,
                   ) && value.location !== l.key
                 }
@@ -354,41 +420,14 @@ function Content({
             ))}
           </select>
         </section>
-        <section>
-          <h3 className="font-semibold mb-2">Providers</h3>
-          <input
-            className="field mb-2"
-            placeholder="Find a provider"
-            aria-label="Find provider filter"
-            value={providerSearch}
-            onChange={(e) => setProviderSearch(e.target.value)}
-          />
-          <div className="max-h-44 overflow-auto">
-            {data.providers
-              .filter(
-                (p) =>
-                  p.status === "active" &&
-                  p.name.toLowerCase().includes(providerSearch.toLowerCase()),
-              )
-              .map((p) =>
-                option(
-                  p.name,
-                  value.providers.includes(String(p.id)),
-                  count(
-                    "providers",
-                    (i) => String(i.provider.id),
-                    String(p.id),
-                  ),
-                  () =>
-                    update({
-                      providers: value.providers.includes(String(p.id))
-                        ? value.providers.filter((x) => x !== String(p.id))
-                        : [...value.providers, String(p.id)],
-                    }),
-                ),
-              )}
-          </div>
-        </section>
+        {/* provider filter */}
+        <ProviderFilter
+          data={data}
+          value={value}
+          count={count}
+          option={option}
+          update={update}
+        />
         <section>
           <h3 className="font-semibold mb-2">Price range</h3>
           <p className="text-xs muted mb-2">
@@ -542,13 +581,13 @@ function Content({
                 Prices shown in provider currency
               </span>
             </div>
-            {loading ? (
+            {loading ?
               <div className="space-y-4">
                 {[1, 2, 3].map((x) => (
                   <div key={x} className="panel h-56 skeleton" />
                 ))}
               </div>
-            ) : groups.length === 0 ? (
+            : groups.length === 0 ?
               <div className="panel text-center p-12">
                 <h2 className="text-xl font-bold">No matching services</h2>
                 <p className="muted mt-2 mb-5">
@@ -566,13 +605,11 @@ function Content({
                   </button>
                 </div>
               </div>
-            ) : (
-              <div className="space-y-4">
+            : <div className="space-y-4">
                 {groups.map((g) => {
                   const p = g.provider;
-                  const show = expanded.includes(p.id)
-                    ? g.items
-                    : g.items.slice(0, 3);
+                  const show =
+                    expanded.includes(p.id) ? g.items : g.items.slice(0, 3);
                   return (
                     <article key={p.id} className="panel overflow-hidden">
                       <div className="p-5 border-b border-slate-100 flex flex-wrap items-start justify-between gap-3">
@@ -589,10 +626,9 @@ function Content({
                           </div>
                         </div>
                         <div className="text-sm">
-                          {p.providerInformation.rating === null ? (
+                          {p.providerInformation.rating === null ?
                             <span className="muted">Not rated yet</span>
-                          ) : (
-                            <span className="flex items-center gap-1 font-semibold">
+                          : <span className="flex items-center gap-1 font-semibold">
                               <Star
                                 size={16}
                                 className="fill-amber-400 text-amber-400"
@@ -602,7 +638,7 @@ function Content({
                                 ({p.providerInformation.reviewCount ?? 0})
                               </span>
                             </span>
-                          )}
+                          }
                         </div>
                       </div>
                       <div className="divide-y divide-slate-100">
@@ -614,30 +650,29 @@ function Content({
                             <div className="min-w-0">
                               <div className="text-xs font-semibold text-teal-700 mb-1">
                                 {labels[i.service.type]}{" "}
-                                {i.service.testAtHome
-                                  ? "· Home test available"
-                                  : ""}
+                                {i.service.testAtHome ?
+                                  "· Home test available"
+                                : ""}
                               </div>
                               <h3 className="font-semibold">
                                 {i.service.title}
                               </h3>
                               <p className="muted text-xs mt-1">
                                 {i.category?.title ?? "Uncategorised"}
-                                {i.subcategory
-                                  ? " / " + i.subcategory.title
-                                  : ""}
-                                {i.duration !== null
-                                  ? ` · From ${i.duration} min`
-                                  : ""}
+                                {i.subcategory ?
+                                  " / " + i.subcategory.title
+                                : ""}
+                                {i.duration !== null ?
+                                  ` · From ${i.duration} min`
+                                : ""}
                               </p>
                             </div>
                             <div className="text-right shrink-0">
-                              {i.price === null ? (
+                              {i.price === null ?
                                 <span className="muted text-sm">
                                   Ask for price
                                 </span>
-                              ) : (
-                                <>
+                              : <>
                                   <div className="font-bold text-teal-800">
                                     {money(i.price, i.currency)}
                                   </div>
@@ -653,7 +688,7 @@ function Content({
                                     </p>
                                   )}
                                 </>
-                              )}
+                              }
                             </div>
                           </div>
                         ))}
@@ -664,15 +699,15 @@ function Content({
                           aria-expanded={expanded.includes(p.id)}
                           onClick={() =>
                             setExpanded((v) =>
-                              v.includes(p.id)
-                                ? v.filter((x) => x !== p.id)
-                                : [...v, p.id],
+                              v.includes(p.id) ?
+                                v.filter((x) => x !== p.id)
+                              : [...v, p.id],
                             )
                           }
                         >
-                          {expanded.includes(p.id)
-                            ? "Show fewer"
-                            : `View all ${g.items.length} matching services`}{" "}
+                          {expanded.includes(p.id) ?
+                            "Show fewer"
+                          : `View all ${g.items.length} matching services`}{" "}
                           <ChevronDown size={16} />
                         </button>
                       )}
@@ -680,7 +715,7 @@ function Content({
                   );
                 })}
               </div>
-            )}
+            }
             {pages > 1 && (
               <nav
                 aria-label="Results pagination"
@@ -748,6 +783,7 @@ function Content({
     </>
   );
 }
+
 export default function Explorer(props: {
   initial: Filters;
   initialData: Dataset;
