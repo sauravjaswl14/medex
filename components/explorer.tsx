@@ -222,10 +222,10 @@ function Content({
             />
           </aside>
           <div className="min-w-0 dark:text-gray-800">
-            <div className="panel p-4 mb-5 flex flex-col sm:flex-row gap-3">
+            <div className="bg-white dark:bg-gray-700 dark:border-2 dark:border-teal-800 rounded-2xl dark:text-white p-4 mb-5 flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
                 <input
-                  className="field pl-10"
+                  className="field pl-10 dark:dark:bg-gray-700 dark:border-teal-800 dark:text-gray-700 w-full"
                   aria-label="Search services, providers and categories"
                   placeholder="Search check-ups, hospitals, lab tests..."
                   value={localSearch}
@@ -246,7 +246,7 @@ function Content({
                 <SlidersHorizontal size={17} /> Filters
               </button>
               <select
-                className=" sm:w-48"
+                className=" sm:w-48  rounded-md hover:cursor-pointer dark:bg-gray-700 dark:border-teal-800 dark:text-white"
                 aria-label="Sort results"
                 value={filters.sort}
                 onChange={(e) => apply({ ...filters, sort: e.target.value })}
@@ -332,7 +332,7 @@ function Content({
                   return (
                     <article
                       key={p.id}
-                      className="bg-white rounded-3xl text-gray-700 dark:text-white dark:bg-gray-700 border-2 border-gray-200 dark:border-teal-700 overflow-hidden "
+                      className="bg-white rounded-3xl text-gray-700 dark:text-white dark:bg-gray-700 border-2 border-gray-200 dark:border-teal-800 overflow-hidden "
                     >
                       <div className="p-5 flex flex-wrap items-start justify-between gap-3">
                         <div>
