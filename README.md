@@ -1,3 +1,5 @@
+I have done AI assisted coding which included complex data extraction from the response, some syntax reated researches , debugging. However the code was thoroughly reviewd, tested and understood by me.
+
 # MedEx Service Explorer
 
 Next.js App Router / TypeScript / Tailwind CSS v4 / TanStack Query. No RHF: filters are not a submission form. Zod is intentionally omitted from the hot path; an API boundary schema is a sensible production extension. Controls use accessible native inputs and selects with shadcn-inspired styling rather than installing the full shadcn registry.
@@ -97,7 +99,7 @@ Visit **`/booking`**. Task 1 (`/`) and Task 2 (`/cart`) remain available. The ne
 
 - `Asia/Bangkok` stays unchanged; ` UTC+05:45`, `Nepal Standard Time`, `(GMT+5:45)` and `Asia/Katmandu ` normalize to `Asia/Kathmandu`; the empty Indian timezone falls back to `Asia/Kolkata`. Other supported whole-hour offsets map to `Etc/GMT` (reversed POSIX sign). Unknown fractional offsets fall back to the country. `Intl.DateTimeFormat` performs all conversions; no client-local `new Date('YYYY-MM-DD')` assumptions.
 - All slots and calendar dates use the **provider's timezone**, not the browser timezone. The booking summary explicitly shows provider time and a separately labeled device-local time. Day boundaries use the provider's date. In a production app, customer timezone should be an explicit preference rather than inferred solely from their browser.
-- A specialist's consultation grid is generated at `duration + buffer` intervals, with each appointment's *duration* fully inside both specialist consultation and provider opening hours. The buffer is between starts; the final buffer need not fit before closing. A group of N requires N consecutive *generated* slots, not N adjacent minutes.
+- A specialist's consultation grid is generated at `duration + buffer` intervals, with each appointment's _duration_ fully inside both specialist consultation and provider opening hours. The buffer is between starts; the final buffer need not fit before closing. A group of N requires N consecutive _generated_ slots, not N adjacent minutes.
 - Closed weekdays, explicit closures, past slots, and the 90-day cutoff are enforced on the API, not only in the UI. A calendar day with no N-person group is disabled. Unavailable dates provide reasons in accessible labels.
 
 ### Booking UX and mock failure controls
