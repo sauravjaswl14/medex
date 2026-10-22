@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import {
   useState,
   useMemo,
@@ -21,26 +22,25 @@ import {
   ChevronDown,
   ArrowRight,
   RefreshCw,
-  HeartPulse,
-  ShoppingCart,
 } from "lucide-react";
 import {
   Dataset,
   Filters,
   defaults,
-  kinds,
   labels,
   parseFilters,
   serialize,
-  Category,
 } from "@/lib/model";
+import Controls from "@/components/controls";
 import { prepare, facet, results, Item } from "@/lib/engine";
-import { PriceRangeForm } from "@/components/price-range-form";
 import { Button } from "@/components/ui/button";
 import * as Dialog from "@radix-ui/react-dialog";
+import Navbar from "./nav-bar";
+
 const client = new QueryClient({
   defaultOptions: { queries: { staleTime: 300000, retry: 1 } },
 });
+
 const size = 8;
 const fetchPart = async (key: keyof Dataset) => {
   const res = await fetch(
@@ -49,6 +49,7 @@ const fetchPart = async (key: keyof Dataset) => {
   if (!res.ok) throw Error("Unable to load " + key);
   return res.json();
 };
+
 const money = (value: number, currency: string) =>
   new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -56,68 +57,6 @@ const money = (value: number, currency: string) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
-
-interface ProviderFilterProps {
-  data: Dataset;
-  value: Filters;
-  count: (
-    dimension: Parameters<typeof facet>[2],
-    key: (i: Item) => string,
-    k: string,
-  ) => number;
-  option: (
-    title: string,
-    selected: boolean,
-    n: number,
-    click: () => void,
-  ) => React.ReactNode;
-  update: (patch: Partial<Filters>) => void;
-}
-
-const ProviderFilter = ({
-  data,
-  value,
-  count,
-  option,
-  update,
-}: ProviderFilterProps) => {
-  const [providerSearch, setProviderSearch] = useState("");
-
-  return (
-    <section>
-      <h3 className="font-semibold mb-2">Providers</h3>
-      <input
-        className="field mb-2"
-        placeholder="Find a provider"
-        aria-label="Find provider filter"
-        value={providerSearch}
-        onChange={(e) => setProviderSearch(e.target.value)}
-      />
-      <div className="max-h-44 overflow-auto">
-        {data.providers
-          .filter(
-            (p) =>
-              p.status === "active" &&
-              p.name.toLowerCase().includes(providerSearch.toLowerCase()),
-          )
-          .map((p) =>
-            option(
-              p.name,
-              value.providers.includes(String(p.id)),
-              count("providers", (i) => String(i.provider.id), String(p.id)),
-              () =>
-                update({
-                  providers:
-                    value.providers.includes(String(p.id)) ?
-                      value.providers.filter((x) => x !== String(p.id))
-                    : [...value.providers, String(p.id)],
-                }),
-            ),
-          )}
-      </div>
-    </section>
-  );
-};
 
 function Content({
   initial,
@@ -255,238 +194,11 @@ function Content({
         .map((x) => [x.key, x]),
     ).values(),
   ].sort((a, b) => a.label.localeCompare(b.label));
-  function Controls({
-    value,
-    change,
-  }: {
-    value: Filters;
-    change: (f: Filters) => void;
-  }) {
-    const update = (patch: Partial<Filters>) =>
-      change({ ...value, ...patch, page: 1 });
-    const count = (
-      dimension: Parameters<typeof facet>[2],
-      key: (i: Item) => string,
-      k: string,
-    ) => facet(items, value, dimension, key).get(k) ?? 0;
-    const option = (
-      title: string,
-      selected: boolean,
-      n: number,
-      click: () => void,
-    ) => (
-      <button
-        key={title}
-        type="button"
-        onClick={click}
-        disabled={!selected && n === 0}
-        aria-pressed={selected}
-        className="flex w-full items-center justify-between rounded-lg px-2 py-2 text-left text-sm hover:bg-slate-50 disabled:opacity-35"
-      >
-        <span className="flex items-center gap-2">
-          <span
-            aria-hidden
-            className={
-              "flex h-4 w-4 items-center justify-center rounded border " +
-              (selected ?
-                "border-teal-700 bg-teal-700 text-white"
-              : "border-slate-300")
-            }
-          >
-            {selected ? "✓" : ""}
-          </span>
-          {title}
-        </span>
-        <span className="muted text-xs">{n}</span>
-      </button>
-    );
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h2 className="font-bold text-lg">Filters</h2>
-          <button
-            className="text-sm text-teal-700 font-semibold"
-            onClick={() => change(defaults)}
-          >
-            Clear all
-          </button>
-        </div>
-        <section>
-          <h3 className="font-semibold mb-2">Service type</h3>
-          {kinds.map((k) =>
-            option(
-              labels[k],
-              value.types.includes(k),
-              count("types", (i) => i.service.type, k),
-              () =>
-                update({
-                  types:
-                    value.types.includes(k) ?
-                      value.types.filter((t) => t !== k)
-                    : [...value.types, k],
-                  category: "",
-                  subcategory: "",
-                }),
-            ),
-          )}
-        </section>
-        <section>
-          <h3 className="font-semibold mb-2">Category</h3>
-          <select
-            aria-label="Category"
-            className="field"
-            value={value.category}
-            onChange={(e) =>
-              update({ category: e.target.value, subcategory: "" })
-            }
-          >
-            <option value="">All categories</option>
-            {categoriesList.map((c) => (
-              <option
-                key={c.id}
-                value={c.id}
-                disabled={
-                  !count("category", (i) => i.category?.id ?? "", c.id) &&
-                  value.category !== c.id
-                }
-              >
-                {c.title} · {labels[c.type]} (
-                {count("category", (i) => i.category?.id ?? "", c.id)})
-              </option>
-            ))}
-          </select>
-          {value.category && (
-            <select
-              aria-label="Subcategory"
-              className="field mt-2"
-              value={value.subcategory}
-              onChange={(e) => update({ subcategory: e.target.value })}
-            >
-              <option value="">All subcategories</option>
-              {categoriesList
-                .find((c) => c.id === value.category)
-                ?.children.filter((c) => c.status)
-                .map((c) => (
-                  <option
-                    key={c.id}
-                    value={c.id}
-                    disabled={
-                      !count(
-                        "subcategory",
-                        (i) => i.subcategory?.id ?? "",
-                        c.id,
-                      ) && value.subcategory !== c.id
-                    }
-                  >
-                    {c.title} (
-                    {count("subcategory", (i) => i.subcategory?.id ?? "", c.id)}
-                    )
-                  </option>
-                ))}
-            </select>
-          )}
-        </section>
-        <section>
-          <h3 className="font-semibold mb-2">Location</h3>
-          <select
-            aria-label="City or country"
-            className="field"
-            value={value.location}
-            onChange={(e) => update({ location: e.target.value })}
-          >
-            <option value="">All locations</option>
-            {locations.map((l) => (
-              <option
-                key={l.key}
-                value={l.key}
-                disabled={
-                  !count(
-                    "location",
-                    (i) =>
-                      (
-                        [
-                          i.provider.providerInformation.city?.slug,
-                          i.provider.providerInformation.country?.alphaCode,
-                        ].includes(l.key)
-                      ) ?
-                        l.key
-                      : "",
-                    l.key,
-                  ) && value.location !== l.key
-                }
-              >
-                {l.label}
-              </option>
-            ))}
-          </select>
-        </section>
-        {/* provider filter */}
-        <ProviderFilter
-          data={data}
-          value={value}
-          count={count}
-          option={option}
-          update={update}
-        />
-        <section>
-          <h3 className="font-semibold mb-2">Price range</h3>
-          <p className="text-xs muted mb-2">
-            Choose one currency. No exchange-rate conversions.
-          </p>
-          <select
-            aria-label="Price currency"
-            className="field"
-            value={value.currency}
-            onChange={(e) =>
-              update({ currency: e.target.value, min: "", max: "" })
-            }
-          >
-            <option value="">Choose currency</option>
-            {(["THB", "NPR", "INR"] as const).map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          <PriceRangeForm
-            min={value.min}
-            max={value.max}
-            currency={value.currency}
-            onApply={(values) => update(values)}
-          />
-        </section>
-        <section>
-          {option(
-            "Home test available",
-            value.home,
-            facet(items, value, "home", (i) =>
-              i.service.testAtHome ? "yes" : "no",
-            ).get("yes") ?? 0,
-            () => update({ home: !value.home }),
-          )}
-        </section>
-      </div>
-    );
-  }
+
   return (
     <>
-      <header className="bg-white border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-5 h-18 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-teal-800 font-black text-2xl">
-            <HeartPulse size={28} /> medex
-            <span className="text-xs font-medium bg-teal-50 px-2 py-1 rounded-full">
-              Explore
-            </span>
-          </div>
-          <a
-            href="/cart"
-            className="flex gap-2 items-center text-sm font-semibold text-teal-800"
-          >
-            <ShoppingCart size={18} /> Cart & checkout
-          </a>
-        </div>
-      </header>
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+      <Navbar />
+      <main className={`mx-auto px-32 py-8 dark:bg-gray-800 dark:text-white`}>
         <div className="mb-8">
           <p className="text-teal-700 text-sm font-semibold mb-2">
             DISCOVER YOUR CARE
@@ -499,10 +211,17 @@ function Content({
           </p>
         </div>
         <div className="grid lg:grid-cols-[280px_minmax(0,1fr)] gap-6">
-          <aside className="panel hidden lg:block p-5 self-start sticky top-4">
-            <Controls value={filters} change={apply} />
+          <aside className="p-5 bg-white dark:border-2 dark:border-teal-800 dark:bg-gray-700 rounded-2xl hidden lg:block self-start sticky top-20">
+            <Controls
+              value={filters}
+              change={apply}
+              data={data}
+              categories={categoriesList}
+              locations={locations}
+              items={items}
+            />
           </aside>
-          <div className="min-w-0">
+          <div className="min-w-0 dark:text-gray-800">
             <div className="panel p-4 mb-5 flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
                 <input
@@ -571,13 +290,13 @@ function Content({
                 role="status"
                 aria-live="polite"
                 aria-atomic="true"
-                className="font-semibold"
+                className="font-semibold dark:text-teal-400 "
               >
                 {computed.count.toLocaleString()} services ·{" "}
                 {computed.groups.length} providers{" "}
                 {pending ? "· Updating…" : ""}
               </p>
-              <span className="muted text-xs">
+              <span className="text-gray-700  dark:text-teal-400 text-xs">
                 Prices shown in provider currency
               </span>
             </div>
@@ -611,8 +330,11 @@ function Content({
                   const show =
                     expanded.includes(p.id) ? g.items : g.items.slice(0, 3);
                   return (
-                    <article key={p.id} className="panel overflow-hidden">
-                      <div className="p-5 border-b border-slate-100 flex flex-wrap items-start justify-between gap-3">
+                    <article
+                      key={p.id}
+                      className="bg-white rounded-3xl text-gray-700 dark:text-white dark:bg-gray-700 border-2 border-gray-200 dark:border-teal-700 overflow-hidden "
+                    >
+                      <div className="p-5 flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <h2 className="text-lg font-bold">{p.name}</h2>
                           <div className="muted text-sm flex items-center gap-2 mt-1">
@@ -625,30 +347,34 @@ function Content({
                             · {p.providerInformation.currency}
                           </div>
                         </div>
-                        <div className="text-sm">
+                        <div className="text-sm ">
                           {p.providerInformation.rating === null ?
-                            <span className="muted">Not rated yet</span>
-                          : <span className="flex items-center gap-1 font-semibold">
+                            <span className="muted dark:text-white">
+                              Not rated yet
+                            </span>
+                          : <span className="flex items-center gap-1 font-semibold ">
                               <Star
                                 size={16}
                                 className="fill-amber-400 text-amber-400"
                               />
-                              {p.providerInformation.rating.toFixed(1)}{" "}
-                              <span className="muted font-normal">
+                              <span className="dark:text-white">
+                                {p.providerInformation.rating.toFixed(1)}
+                              </span>{" "}
+                              <span className="text-gray-600 font-normal dark:text-white">
                                 ({p.providerInformation.reviewCount ?? 0})
                               </span>
                             </span>
                           }
                         </div>
                       </div>
-                      <div className="divide-y divide-slate-100">
+                      <div className="">
                         {show.map((i) => (
                           <div
                             key={i.service.id}
                             className="p-4 sm:p-5 flex items-center justify-between gap-3"
                           >
                             <div className="min-w-0">
-                              <div className="text-xs font-semibold text-teal-700 mb-1">
+                              <div className="text-xs font-semibold text-teal-700 dark:text-teal-400 mb-1">
                                 {labels[i.service.type]}{" "}
                                 {i.service.testAtHome ?
                                   "· Home test available"
@@ -657,7 +383,7 @@ function Content({
                               <h3 className="font-semibold">
                                 {i.service.title}
                               </h3>
-                              <p className="muted text-xs mt-1">
+                              <p className="text-gray-600 text-xs mt-1 dark:text-white">
                                 {i.category?.title ?? "Uncategorised"}
                                 {i.subcategory ?
                                   " / " + i.subcategory.title
@@ -673,17 +399,17 @@ function Content({
                                   Ask for price
                                 </span>
                               : <>
-                                  <div className="font-bold text-teal-800">
+                                  <div className="font-bold text-teal-800 dark:text-teal-400">
                                     {money(i.price, i.currency)}
                                   </div>
                                   {i.original !== null &&
                                     i.original > i.price && (
-                                      <del className="muted text-xs">
+                                      <del className="text-gray-700 dark:text-teal-400 text-xs">
                                         {money(i.original, i.currency)}
                                       </del>
                                     )}
                                   {i.service.type === "wellness" && (
-                                    <p className="muted text-xs">
+                                    <p className="text-gray-700 dark:text-teal-400 text-xs">
                                       Lowest duration price
                                     </p>
                                   )}
@@ -695,7 +421,7 @@ function Content({
                       </div>
                       {g.items.length > 3 && (
                         <button
-                          className="w-full border-t border-slate-100 p-3 text-teal-700 font-semibold text-sm hover:bg-teal-50 flex items-center justify-center gap-2"
+                          className="w-full border-t border-slate-100 dark:border-slate-50 p-3 text-teal-400 font-semibold text-sm hover:bg-teal-50 flex items-center justify-center gap-2"
                           aria-expanded={expanded.includes(p.id)}
                           onClick={() =>
                             setExpanded((v) =>
@@ -763,7 +489,18 @@ function Content({
               Choose filters, then apply to update results.
             </p>
             <div className="p-5 overflow-auto flex-1">
-              <Controls value={draft} change={setDraft} />
+              <Controls
+                value={draft}
+                change={setDraft}
+                data={{
+                  categories: [],
+                  providers: [],
+                  services: [],
+                }}
+                categories={[]}
+                locations={[]}
+                items={[]}
+              />
             </div>
             <div className="p-4 border-t">
               <Button

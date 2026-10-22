@@ -19,6 +19,7 @@ import {
   Trash2,
   Minus,
   Plus,
+  HeartPulse,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -308,11 +309,11 @@ function CartView() {
     }, {}) ?? {};
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="bg-white border-b">
+      <header className="sticky top-0 z-10 bg-white border-b">
         <div className="max-w-6xl mx-auto p-5 flex items-center justify-between">
-          <Link href="/" className="font-black text-teal-800 text-xl">
-            medex
-          </Link>
+          <div className="flex items-center gap-2 text-teal-800 font-black text-2xl dark:text-white">
+            <HeartPulse size={28} /> <span>medex</span>
+          </div>
           <Link
             href="/"
             className="text-sm flex gap-2 items-center text-teal-800"
