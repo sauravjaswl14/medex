@@ -12,5 +12,5 @@ const schema = z.object({
   ),
 });
 export async function POST(req: NextRequest) {
-  return respond(req, async () => mergeGuest(schema.parse(await req.json())));
+  return respond(req, async () => mergeGuest(schema.parse(await req.json()).items));
 }

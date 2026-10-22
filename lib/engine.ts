@@ -19,7 +19,7 @@ export type Item = {
   search: string;
 };
 // Integer micro-units preserve fractional percentage calculations without rounding intermediate steps.
-const SCALE = 1000000n;
+const SCALE = BigInt(1000000);
 function decimal(value: string | null | undefined): bigint | null {
   if (value === null || value === undefined || !/^\d+(?:\.\d+)?$/.test(value))
     return null;
@@ -33,16 +33,16 @@ export function finalPrice(p: Pricing): number | null {
   const discount = decimal(p.discount ?? "0");
   const charge = decimal(p.serviceCharge ?? "0");
   if (discount === null || charge === null) return null;
-  if (p.discountType === "percent" && discount > 100n * SCALE) return null;
+  if (p.discountType === "percent" && discount > BigInt(100) * SCALE) return null;
   const deduction =
     p.discountType === "percent"
-      ? (base * discount) / (100n * SCALE)
+      ? (base * discount) / (BigInt(100) * SCALE)
       : discount;
   if (deduction > base) return null;
   const after = base - deduction;
   const extra =
     p.serviceChargeType === "percent"
-      ? (after * charge) / (100n * SCALE)
+      ? (after * charge) / (BigInt(100) * SCALE)
       : charge;
   const final = after + extra;
   return Number(final) / Number(SCALE);
